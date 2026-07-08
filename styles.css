@@ -1,18 +1,18 @@
 :root {
-  --ink: #111827;
-  --muted: #667085;
-  --line: #e5e7eb;
-  --paper: #f5f7fb;
+  --ink: #111c18;
+  --muted: #69766f;
+  --line: #dfe7e2;
+  --paper: #f6f8f4;
   --panel: #ffffff;
-  --green: #16a34a;
-  --green-dark: #15803d;
-  --mint: #ecfdf3;
-  --amber: #b54708;
-  --amber-bg: #fffaeb;
-  --blue: #2563eb;
-  --blue-dark: #1d4ed8;
-  --sidebar: #0f172a;
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 12px 30px rgba(16, 24, 40, 0.08);
+  --green: #047857;
+  --green-dark: #065f46;
+  --mint: #e8f7ef;
+  --amber: #b45309;
+  --amber-bg: #fff7e6;
+  --blue: #0f766e;
+  --blue-dark: #115e59;
+  --sidebar: #10231d;
+  --shadow: 0 1px 2px rgba(17, 28, 24, 0.05), 0 14px 32px rgba(17, 28, 24, 0.09);
 }
 
 * {
@@ -23,7 +23,8 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 32rem),
+    radial-gradient(circle at top right, rgba(4, 120, 87, 0.1), transparent 34rem),
+    radial-gradient(circle at bottom left, rgba(180, 83, 9, 0.06), transparent 28rem),
     var(--paper);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -58,7 +59,7 @@ button:disabled {
 
 button:hover {
   background: var(--blue-dark);
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
+  box-shadow: 0 8px 18px rgba(4, 120, 87, 0.22);
   transform: translateY(-1px);
 }
 
@@ -69,8 +70,8 @@ button:hover {
 }
 
 .secondary:hover {
-  background: #f8fafc;
-  box-shadow: 0 8px 18px rgba(16, 24, 40, 0.08);
+  background: #fbfcf8;
+  box-shadow: 0 8px 18px rgba(17, 28, 24, 0.08);
 }
 
 .compact {
@@ -101,7 +102,7 @@ button:hover {
   top: 0;
   height: 100vh;
   padding: 1.1rem;
-  background: linear-gradient(180deg, var(--sidebar), #111827);
+  background: linear-gradient(180deg, var(--sidebar), #071611);
   color: white;
   display: flex;
   flex-direction: column;
@@ -120,7 +121,7 @@ button:hover {
   width: 44px;
   height: 44px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #2563eb, #16a34a);
+  background: linear-gradient(135deg, #f5c451, #047857);
   color: white;
   font-weight: 900;
 }
@@ -248,8 +249,8 @@ main {
 }
 
 .metric-card.primary {
-  background: linear-gradient(135deg, #ffffff, #eff6ff);
-  border-color: #bfdbfe;
+  background: linear-gradient(135deg, #ffffff, #edf8f1);
+  border-color: #b7e4c7;
 }
 
 .metric-card.urgent {
@@ -298,7 +299,7 @@ main {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fbfdff;
+  background: #fbfcf8;
   color: var(--ink);
   padding: 0.78rem 0.85rem;
   transition:
@@ -311,9 +312,9 @@ main {
 .data-form select:focus,
 .assistant-form input:focus {
   outline: 0;
-  border-color: #93c5fd;
+  border-color: #86d4ae;
   background: white;
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 4px rgba(4, 120, 87, 0.12);
 }
 
 .data-form button {
@@ -327,7 +328,7 @@ main {
 .upload-review {
   border: 1px dashed #bfe6cc;
   border-radius: 8px;
-  background: #f8fafc;
+  background: #fbfcf8;
   padding: 0.8rem;
 }
 
@@ -340,7 +341,7 @@ main {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.85rem;
-  background: #fbfdff;
+  background: #fbfcf8;
   transition:
     border-color 140ms ease,
     box-shadow 140ms ease,
@@ -350,8 +351,8 @@ main {
 .bill-row:hover,
 .vendor-card:hover,
 .document-list li:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.06);
+  border-color: #cbd8d0;
+  box-shadow: 0 8px 20px rgba(17, 28, 24, 0.06);
   transform: translateY(-1px);
 }
 
@@ -405,7 +406,7 @@ main {
 
 .recommendation-list span {
   border-radius: 8px;
-  background: #f8fafc;
+  background: #fbfcf8;
   border: 1px solid var(--line);
   color: var(--ink);
   padding: 0.72rem;
@@ -461,7 +462,7 @@ main {
 .chart span {
   display: block;
   border-radius: 8px 8px 0 0;
-  background: linear-gradient(180deg, #60a5fa, #2563eb);
+  background: linear-gradient(180deg, #34d399, #047857);
 }
 
 .chart-labels {
@@ -511,7 +512,7 @@ main {
 
 .message.bot {
   align-self: flex-start;
-  background: #f8fafc;
+  background: #fbfcf8;
   border: 1px solid var(--line);
 }
 
@@ -532,7 +533,7 @@ main {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.82rem 0.9rem;
-  background: #fbfdff;
+  background: #fbfcf8;
 }
 
 .toast {
