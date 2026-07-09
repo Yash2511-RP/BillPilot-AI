@@ -96,11 +96,93 @@ function titleCase(value) {
   return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function detectUploadFields(file) {
+function parseDateToIso(value) {
+  if (!value) {
+    return "";
+  }
+
+  const cleaned = value.replace(/,/g, "").trim();
+  const numeric = cleaned.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (numeric) {
+    const year = numeric[3].length === 2 ? `20${numeric[3]}` : numeric[3];
+    return `${year}-${numeric[1].padStart(2, "0")}-${numeric[2].padStart(2, "0")}`;
+  }
+
+  const iso = cleaned.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) {
+    return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(cleaned);
+  if (Number.isNaN(parsed.getTime())) {
+    const withYear = new Date(`${cleaned} ${new Date().getFullYear()}`);
+    return Number.isNaN(withYear.getTime()) ? "" : withYear.toISOString().slice(0, 10);
+  }
+
+  return parsed.toISOString().slice(0, 10);
+}
+
+function extractInvoiceTextFields(text) {
+  const normalized = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
+  const lines = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const amountPatterns = [
+    /(?:amount\s+due|total\s+due|balance\s+due|payment\s+due)[^\d$]{0,30}\$?\s*([\d,]+(?:\.\d{2})?)/i,
+    /(?:invoice\s+total|total|amount)[^\d$]{0,30}\$?\s*([\d,]+(?:\.\d{2})?)/i,
+  ];
+  const amount =
+    amountPatterns.map((pattern) => normalized.match(pattern)?.[1]).find(Boolean) ||
+    [...normalized.matchAll(/\$\s*([\d,]+(?:\.\d{2})?)/g)].at(-1)?.[1] ||
+    "";
+
+  const datePatterns = [
+    /(?:due\s+date|payment\s+due|due\s+by)[^\w]{0,20}([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
+    /\b([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})\b/i,
+  ];
+  const dueDate = parseDateToIso(datePatterns.map((pattern) => normalized.match(pattern)?.[1]).find(Boolean));
+
+  const invoiceNumber =
+    normalized.match(/(?:invoice\s*(?:number|no\.?|#)|inv\s*#)[^\w-]{0,12}([A-Z0-9-]+)/i)?.[1] ||
+    `UPLOAD-${Date.now()}`;
+
+  const vendorLine =
+    lines.find((line) => /^vendor\s*:/i.test(line))?.replace(/^vendor\s*:\s*/i, "") ||
+    lines.find(
+      (line) =>
+        line.length <= 60 &&
+        !/(invoice|statement|amount|total|balance|date|due|account|page|bill\s+to|ship\s+to)/i.test(line) &&
+        /[A-Za-z]/.test(line),
+    );
+
+  return {
+    vendorName: vendorLine ? titleCase(vendorLine) : "",
+    amount: amount.replace(/,/g, ""),
+    dueDate,
+    invoiceNumber,
+  };
+}
+
+async function readUploadText(file) {
+  if (file.size > 2_000_000 || file.type.startsWith("image/")) {
+    return "";
+  }
+
+  try {
+    return await file.text();
+  } catch (error) {
+    return "";
+  }
+}
+
+async function detectUploadFields(file) {
   const baseName = cleanFileName(file.name);
   const amountMatch = baseName.match(/(?:\$|amount\s*)?(\d+(?:\.\d{2})?)/i);
-  const amount = amountMatch?.[1] || "";
-  const vendorName = titleCase(
+  const rawText = await readUploadText(file);
+  const extracted = extractInvoiceTextFields(rawText);
+  const fallbackVendorName = titleCase(
     baseName
       .replace(/\b(inv|invoice|bill|statement|amount)\b/gi, "")
       .replace(/\d+(?:\.\d{2})?/g, "")
@@ -109,10 +191,11 @@ function detectUploadFields(file) {
   );
 
   return {
-    vendorName,
-    amount,
-    dueDate: addDaysIso(7),
-    invoiceNumber: `UPLOAD-${Date.now()}`,
+    vendorName: extracted.vendorName || fallbackVendorName,
+    amount: extracted.amount || amountMatch?.[1] || "",
+    dueDate: extracted.dueDate || addDaysIso(7),
+    invoiceNumber: extracted.invoiceNumber || `UPLOAD-${Date.now()}`,
+    rawText,
   };
 }
 
@@ -794,21 +877,31 @@ uploadPdfButton.addEventListener("click", () => {
   invoiceUpload.click();
 });
 
-invoiceUpload.addEventListener("change", () => {
+invoiceUpload.addEventListener("change", async () => {
   const file = invoiceUpload.files[0];
   if (!file) {
     return;
   }
 
-  const detected = detectUploadFields(file);
+  uploadPdfButton.disabled = true;
+  showToast("AI is reading the bill...");
+
+  const detected = await detectUploadFields(file);
   uploadReviewForm.elements.filename.value = file.name;
+  uploadReviewForm.elements.rawText.value = detected.rawText;
   uploadReviewForm.elements.vendorName.value = detected.vendorName;
   uploadReviewForm.elements.amount.value = detected.amount;
   uploadReviewForm.elements.dueDate.value = detected.dueDate;
   uploadReviewForm.elements.invoiceNumber.value = detected.invoiceNumber;
   uploadReviewForm.classList.remove("hidden");
   uploadReviewForm.elements.vendorName.focus();
-  showToast("Review the detected bill details, then save.");
+  uploadPdfButton.disabled = false;
+
+  if (detected.rawText && detected.vendorName && detected.amount && detected.dueDate) {
+    showToast("AI read vendor, amount, and due date. Review before saving.");
+  } else {
+    showToast("AI filled what it could. Review missing fields before saving.");
+  }
 });
 
 cancelUploadButton.addEventListener("click", () => {
@@ -828,6 +921,7 @@ uploadReviewForm.addEventListener("submit", async (event) => {
       method: "POST",
       body: JSON.stringify({
         filename: formData.get("filename"),
+        rawText: formData.get("rawText"),
         vendorName: formData.get("vendorName"),
         amount: formData.get("amount"),
         dueDate: formData.get("dueDate"),

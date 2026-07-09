@@ -352,6 +352,88 @@ def require_text(payload: dict, field: str) -> str:
     return value
 
 
+def parse_invoice_date(value: str) -> str:
+    value = value.strip().replace(",", "")
+    numeric = re.fullmatch(r"(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})", value)
+    if numeric:
+        year = numeric.group(3)
+        if len(year) == 2:
+            year = f"20{year}"
+        return f"{year}-{numeric.group(1).zfill(2)}-{numeric.group(2).zfill(2)}"
+
+    iso = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", value)
+    if iso:
+        return f"{iso.group(1)}-{iso.group(2).zfill(2)}-{iso.group(3).zfill(2)}"
+
+    for fmt in ("%B %d %Y", "%b %d %Y"):
+        try:
+            return datetime.strptime(value, fmt).date().isoformat()
+        except ValueError:
+            pass
+    return ""
+
+
+def extract_invoice_fields(text: str) -> dict:
+    normalized = re.sub(r"[ \t]+", " ", text.replace("\r", "\n"))
+    lines = [line.strip() for line in normalized.splitlines() if line.strip()]
+
+    amount = ""
+    for pattern in (
+        r"(?:amount\s+due|total\s+due|balance\s+due|payment\s+due)[^\d$]{0,30}\$?\s*([\d,]+(?:\.\d{2})?)",
+        r"(?:invoice\s+total|total|amount)[^\d$]{0,30}\$?\s*([\d,]+(?:\.\d{2})?)",
+    ):
+        match = re.search(pattern, normalized, re.I)
+        if match:
+            amount = match.group(1).replace(",", "")
+            break
+    if not amount:
+        matches = re.findall(r"\$\s*([\d,]+(?:\.\d{2})?)", normalized)
+        amount = matches[-1].replace(",", "") if matches else ""
+
+    due_date = ""
+    date_pattern = (
+        r"([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4}|"
+        r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|"
+        r"\d{4}-\d{1,2}-\d{1,2})"
+    )
+    for pattern in (rf"(?:due\s+date|payment\s+due|due\s+by)[^\w]{{0,20}}{date_pattern}", date_pattern):
+        match = re.search(pattern, normalized, re.I)
+        if match:
+            due_date = parse_invoice_date(match.group(1))
+            if due_date:
+                break
+
+    invoice_match = re.search(
+        r"(?:invoice\s*(?:number|no\.?|#)|inv\s*#)[^\w-]{0,12}([A-Z0-9-]+)",
+        normalized,
+        re.I,
+    )
+
+    vendor_name = ""
+    for line in lines:
+        if re.match(r"vendor\s*:", line, re.I):
+            vendor_name = re.sub(r"vendor\s*:\s*", "", line, flags=re.I)
+            break
+        if (
+            len(line) <= 60
+            and re.search(r"[A-Za-z]", line)
+            and not re.search(
+                r"invoice|statement|amount|total|balance|date|due|account|page|bill\s+to|ship\s+to",
+                line,
+                re.I,
+            )
+        ):
+            vendor_name = line
+            break
+
+    return {
+        "vendorName": vendor_name,
+        "amount": amount,
+        "dueDate": due_date,
+        "invoiceNumber": invoice_match.group(1) if invoice_match else "",
+    }
+
+
 class BillPilotHandler(SimpleHTTPRequestHandler):
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
@@ -497,15 +579,23 @@ class BillPilotHandler(SimpleHTTPRequestHandler):
                 try:
                     payload = json_body(self)
                     filename = require_text(payload, "filename")
-                    amount_cents = cents_from_amount(require_text(payload, "amount"))
-                    due_date = require_text(payload, "dueDate")
+                    extracted = extract_invoice_fields(str(payload.get("rawText", "")))
+                    amount_value = str(payload.get("amount", "")).strip() or extracted["amount"]
+                    due_date = str(payload.get("dueDate", "")).strip() or extracted["dueDate"]
+                    invoice_number = (
+                        str(payload.get("invoiceNumber", "")).strip()
+                        or extracted["invoiceNumber"]
+                        or f"UPLOAD-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+                    )
+                    amount_cents = cents_from_amount(amount_value)
+                    if not due_date:
+                        raise ValueError("dueDate is required")
                     date.fromisoformat(due_date)
-                    invoice_number = require_text(payload, "invoiceNumber")
                 except ValueError as exc:
                     self.send_error_json(str(exc))
                     return
 
-                vendor_name = str(payload.get("vendorName", "")).strip()
+                vendor_name = str(payload.get("vendorName", "")).strip() or extracted["vendorName"]
                 if not vendor_name:
                     vendor_name = Path(filename).stem.replace("_", " ").replace("-", " ").strip()
                 vendor_name = vendor_name.title() or "Uploaded Invoice"

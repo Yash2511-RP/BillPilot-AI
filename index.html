@@ -119,6 +119,7 @@
 
             <form id="uploadReviewForm" class="data-form upload-review hidden" aria-label="Review uploaded bill">
               <input name="filename" type="text" readonly aria-label="Uploaded file name">
+              <input name="rawText" type="hidden">
               <input name="vendorName" type="text" placeholder="Vendor detected" required>
               <input name="amount" type="number" min="0.01" step="0.01" placeholder="Amount" required>
               <input name="dueDate" type="date" required>
