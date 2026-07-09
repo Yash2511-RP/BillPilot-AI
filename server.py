@@ -243,6 +243,16 @@ def create_payment_receipt(conn: sqlite3.Connection, bill_id: int) -> None:
     )
 
 
+def simulated_vendor_bill(account_number: str, vendor_name: str) -> dict:
+    seed = sum(ord(char) for char in (account_number or vendor_name))
+    amount_cents = 5000 + (seed % 95000)
+    return {
+        "amount_cents": amount_cents,
+        "due_date": (date.today() + timedelta(days=7 + (seed % 14))).isoformat(),
+        "invoice_number": f"AUTO-{seed}-{datetime.now(UTC).strftime('%H%M%S')}",
+    }
+
+
 def utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -746,6 +756,65 @@ class BillPilotHandler(SimpleHTTPRequestHandler):
                     ),
                 )
                 self.send_json({"ok": True, "vendorId": vendor_id, "autopay": bool(enabled)})
+                return
+
+            fetch_vendor_match = re.fullmatch(r"/api/vendors/(\d+)/fetch-bill", path)
+            if fetch_vendor_match:
+                vendor_id = int(fetch_vendor_match.group(1))
+                vendor = conn.execute("SELECT * FROM vendors WHERE id = ?", (vendor_id,)).fetchone()
+                if vendor is None:
+                    self.send_error_json("Vendor not found", HTTPStatus.NOT_FOUND)
+                    return
+                if not vendor["account_number"] or vendor["account_number"] == "Manual":
+                    self.send_error_json("Add this vendor's account number before fetching bills.")
+                    return
+
+                detected = simulated_vendor_bill(vendor["account_number"], vendor["company_name"])
+                cursor = conn.execute(
+                    """
+                    INSERT INTO bills (
+                      vendor_id, amount_cents, due_date, invoice_number, status, source, detected_at
+                    ) VALUES (?, ?, ?, ?, 'approval_needed', 'vendor_portal', ?)
+                    """,
+                    (
+                        vendor_id,
+                        detected["amount_cents"],
+                        detected["due_date"],
+                        detected["invoice_number"],
+                        utc_now(),
+                    ),
+                )
+                bill_id = cursor.lastrowid
+                conn.execute(
+                    """
+                    INSERT INTO receipts (bill_id, vendor_name, document_type, stored_path, created_at)
+                    VALUES (?, ?, 'Vendor Portal Bill', ?, ?)
+                    """,
+                    (
+                        bill_id,
+                        vendor["company_name"],
+                        f"/receipts/vendor-portal-bill-{bill_id}.pdf",
+                        utc_now(),
+                    ),
+                )
+                conn.execute(
+                    "INSERT INTO audit_events (event_type, detail, created_at) VALUES (?, ?, ?)",
+                    (
+                        "vendor_bill_fetched",
+                        f"Fetched bill {bill_id} for vendor {vendor_id}",
+                        utc_now(),
+                    ),
+                )
+                self.send_json(
+                    {
+                        "ok": True,
+                        "billId": bill_id,
+                        "vendor": vendor["company_name"],
+                        "amount": money(detected["amount_cents"]),
+                        "dueDate": detected["due_date"],
+                    },
+                    HTTPStatus.CREATED,
+                )
                 return
 
             bill_match = re.fullmatch(r"/api/bills/(\d+)/pay", path)

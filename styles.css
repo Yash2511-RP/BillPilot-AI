@@ -448,6 +448,13 @@ main {
   grid-template-columns: 1fr auto;
 }
 
+.vendor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
 .toggle {
   position: relative;
   width: 52px;
@@ -648,6 +655,15 @@ main {
   .bill-row {
     grid-template-columns: 1fr;
     align-items: start;
+  }
+
+  .vendor-card {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .vendor-actions {
+    justify-content: flex-start;
   }
 
   .metric-card strong {

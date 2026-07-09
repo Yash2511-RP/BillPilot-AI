@@ -230,6 +230,19 @@ function statusLabel(status) {
   return labels[status] || status.replaceAll("_", " ");
 }
 
+function simulatedVendorBill(vendor) {
+  const source = `${vendor.accountNumber || vendor.name}`.split("").reduce((sum, char) => {
+    return sum + char.charCodeAt(0);
+  }, 0);
+  const amountCents = 5000 + (source % 95000);
+
+  return {
+    amountCents,
+    dueDate: addDaysIso(7 + (source % 14)),
+    invoice: `AUTO-${source}-${Date.now().toString().slice(-4)}`,
+  };
+}
+
 function createSeedData() {
   return {
     nextAccountId: 4,
@@ -547,6 +560,41 @@ async function localApi(path, options = {}) {
     return { ok: true, vendorId: vendor.id, autopay: vendor.autopay };
   }
 
+  const fetchVendorBillMatch = path.match(/^\/api\/vendors\/(\d+)\/fetch-bill$/);
+  if (method === "POST" && fetchVendorBillMatch) {
+    const vendor = data.vendors.find((item) => item.id === Number(fetchVendorBillMatch[1]));
+    if (!vendor) throw new Error("Vendor not found.");
+    if (!vendor.accountNumber || vendor.accountNumber === "Manual") {
+      throw new Error("Add this vendor's account number before fetching bills.");
+    }
+
+    const detected = simulatedVendorBill(vendor);
+    const bill = {
+      id: data.nextBillId++,
+      vendorId: vendor.id,
+      amountCents: detected.amountCents,
+      dueDate: detected.dueDate,
+      invoice: detected.invoice,
+      status: "approval_needed",
+      source: "vendor_portal",
+    };
+    data.bills.push(bill);
+    data.receipts.unshift({
+      id: data.nextReceiptId++,
+      bill_id: bill.id,
+      vendor_name: vendor.name,
+      document_type: "Vendor Portal Bill",
+    });
+    saveLocalData(data);
+    return {
+      ok: true,
+      billId: bill.id,
+      vendor: vendor.name,
+      amount: formatMoney(bill.amountCents),
+      dueDate: bill.dueDate,
+    };
+  }
+
   const payMatch = path.match(/^\/api\/bills\/(\d+)\/pay$/);
   if (method === "POST" && payMatch) {
     const bill = data.bills.find((item) => item.id === Number(payMatch[1]));
@@ -671,13 +719,21 @@ function renderVendors(vendors) {
         <div class="vendor-card">
           <div>
             <h3>${vendor.name}</h3>
-            <p>${vendor.category} • ${vendor.schedule} • ${vendor.limit} max</p>
+            <p>${vendor.category} • Account ${vendor.accountNumber || "Not set"} • ${vendor.limit} max</p>
+            <p>${vendor.schedule} • ${vendor.website || "No vendor site"}</p>
           </div>
-          <button
-            class="toggle ${vendor.autopay ? "on" : ""}"
-            data-vendor-id="${vendor.id}"
-            aria-label="Toggle AutoPay for ${vendor.name}"
-          ></button>
+          <div class="vendor-actions">
+            <button
+              class="secondary compact"
+              data-fetch-vendor="${vendor.id}"
+              aria-label="Fetch latest bill for ${vendor.name}"
+            >Fetch Bill</button>
+            <button
+              class="toggle ${vendor.autopay ? "on" : ""}"
+              data-vendor-id="${vendor.id}"
+              aria-label="Toggle AutoPay for ${vendor.name}"
+            ></button>
+          </div>
         </div>
       `,
     )
@@ -753,6 +809,22 @@ navLinks.forEach((link) => {
 });
 
 vendorGrid.addEventListener("click", async (event) => {
+  const fetchVendorId = event.target.dataset.fetchVendor;
+  if (fetchVendorId) {
+    event.target.disabled = true;
+    try {
+      const response = await api(`/api/vendors/${fetchVendorId}/fetch-bill`, { method: "POST" });
+      await loadApp();
+      showToast(`Fetched ${response.vendor} bill for ${response.amount}.`);
+      showPage("bills-page");
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      event.target.disabled = false;
+    }
+    return;
+  }
+
   if (!event.target.classList.contains("toggle")) {
     return;
   }
